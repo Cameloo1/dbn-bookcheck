@@ -34,8 +34,8 @@ npm --prefix web install --no-package-lock
 npm --prefix web run verify
 ```
 
-The checked-in GitHub Pages workflow builds and audits the static artifact.
-Deployment remains a separate repository-owner action.
+The checked-in GitHub Pages workflow builds, audits, and deploys the
+[live static artifact](https://cameloo1.github.io/dbn-bookcheck/).
 
 ## Architecture
 
