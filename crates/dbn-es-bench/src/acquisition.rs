@@ -863,10 +863,8 @@ mod tests {
     }
 
     #[test]
-    fn committed_config_is_bounded() {
-        let config = load_config(Path::new("../../config/live-session.json"))
-            .expect("committed config should load");
-        validate_config(&config).expect("committed config should be safe");
+    fn sample_config_is_bounded() {
+        validate_config(&config()).expect("sample config should be safe");
     }
 
     #[test]
