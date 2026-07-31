@@ -1,6 +1,6 @@
-# dbn-es-bench
+# dbn-bookcheck
 
-`dbn-es-bench` is a Rust/Node toolkit for streaming Databento DBN files, reconstructing ES top-of-book, detecting transparent liquidity-sweep events, and benchmarking decode throughput.
+`dbn-bookcheck` is a Rust/Node toolkit for streaming Databento DBN files, reconstructing ES top-of-book, detecting transparent liquidity-sweep events, and benchmarking decode throughput.
 
 ## Results first
 
