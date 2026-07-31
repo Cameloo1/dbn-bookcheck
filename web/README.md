@@ -36,9 +36,9 @@ accessibility gate.
 ## GitHub Pages
 
 The repository workflow builds the site with the repository-name base path,
-audits the exact `dist/` directory, and packages a Pages artifact. Ordinary
-pushes only validate the artifact. Deployment runs only from a manually
-dispatched workflow after owner approval.
+audits the exact `dist/` directory, packages a Pages artifact, and deploys it
+after the build passes. Push deployment was enabled only after owner approval;
+`workflow_dispatch` remains available for an explicit rerun.
 
 Generated `dist/`, browser traces, screenshots, coverage, dependencies, local
 logs, paid payloads, and internal audit notes remain outside the publication
