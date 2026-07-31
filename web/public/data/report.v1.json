@@ -1,0 +1,1401 @@
+{
+  "schema_version": 1,
+  "report_metadata": {
+    "title": "Reconstructing ES from 58,988,994 market events",
+    "subtitle": "A Rust and Node market-data engineering case study: bounded acquisition, streaming decode, order-book reconstruction, independent validation, and measured performance.",
+    "kind": "historical-market-data-engineering-case-study",
+    "evidence_scope": "One bounded 23-hour ES Globex session and one measured host"
+  },
+  "dataset": {
+    "name": "GLBX.MDP3",
+    "symbol": "ES.v.0",
+    "start": "2025-04-03T22:00:00Z",
+    "end": "2025-04-04T21:00:00Z",
+    "session_hours": 23,
+    "total_records": 58988994,
+    "compressed_bytes": 1186684063,
+    "decoded_bytes": 10833721064,
+    "total_cost_usd": 9.011640268564,
+    "schemas": [
+      {
+        "name": "mbo",
+        "label": "MBO",
+        "records": 33438049,
+        "compressed_bytes": 542275669,
+        "decoded_bytes": 1872531104,
+        "cost_usd": 3.139074,
+        "used_for": "Streaming decode, top-of-book reconstruction, independent-validation input, and the sweep heuristic."
+      },
+      {
+        "name": "mbp-10",
+        "label": "MBP-10",
+        "records": 24171039,
+        "compressed_bytes": 623005045,
+        "decoded_bytes": 8894942712,
+        "cost_usd": 4.14203,
+        "used_for": "Exchange-produced ten-level book view, independent top-of-book validation, and cross-schema benchmark comparison."
+      },
+      {
+        "name": "trades",
+        "label": "Trades",
+        "records": 1378526,
+        "compressed_bytes": 21376339,
+        "decoded_bytes": 66169608,
+        "cost_usd": 1.725498,
+        "used_for": "Trade-only decoder coverage and cross-schema benchmark comparison."
+      },
+      {
+        "name": "ohlcv-1m",
+        "label": "OHLCV-1m",
+        "records": 1380,
+        "compressed_bytes": 27010,
+        "decoded_bytes": 77640,
+        "cost_usd": 0.005038,
+        "used_for": "Low-frequency decoder coverage and cross-schema benchmark comparison."
+      }
+    ]
+  },
+  "claims": [
+    {
+      "id": "dataset.total_records",
+      "label": "Records streamed",
+      "value": 58988994,
+      "display": "58,988,994",
+      "unit": "records",
+      "evidence_status": "derived-live",
+      "source_path": "evidence/public/acquisition-summary.json",
+      "source_locator": "/dataset/total_records",
+      "method_note": "Sum of the four schema record counts after checksum, schema, and count verification.",
+      "limitations": "Bounded to the named historical session and four acquired schemas."
+    },
+    {
+      "id": "dataset.total_cost_usd",
+      "label": "Conservatively counted acquisition cost",
+      "value": 9.011640268564,
+      "display": "$9.011640",
+      "unit": "USD",
+      "evidence_status": "measured-live",
+      "source_path": "evidence/public/acquisition-summary.json",
+      "source_locator": "/dataset/total_cost_usd",
+      "method_note": "Quote-first acquisition with a hard 10 USD cap and conservative spend accounting before external calls.",
+      "limitations": "Per-schema public display costs are rounded; this total preserves the promoted conservative ledger value."
+    },
+    {
+      "id": "validation.exact_matches",
+      "label": "Exact eligible MBP-10 updates",
+      "value": 23961616,
+      "display": "23,961,616 / 23,961,616",
+      "unit": "records",
+      "evidence_status": "measured-live",
+      "source_path": "evidence/public/book-validation-summary.json",
+      "source_locator": "/exact_matches",
+      "method_note": "Records were merge-grouped by exact event timestamp, publisher, instrument, and sequence. Identical action, price, and size records were paired within each group. Trades compared the reconstructed pre-event book; state-changing events compared the final event book. State remained withheld until a complete clear/snapshot baseline, and every eligible MBP-10 miss remained in the denominator.",
+      "limitations": "Top-of-book agreement only; this is not full-depth, routing, or execution-quality proof."
+    },
+    {
+      "id": "validation.end_to_end_exact_match_pct",
+      "label": "End-to-end exact match",
+      "value": 100,
+      "display": "100.000000%",
+      "unit": "percent",
+      "evidence_status": "derived-live",
+      "source_path": "evidence/public/book-validation-summary.json",
+      "source_locator": "/end_to_end_exact_match_pct",
+      "method_note": "Exact price-and-size matches divided by all eligible MBP-10 updates.",
+      "limitations": "Measured after the explicit complete-baseline boundary for one session."
+    },
+    {
+      "id": "benchmark.mbo_streaming_messages_per_second",
+      "label": "Compressed MBO streaming throughput",
+      "value": 3454156.3920823885,
+      "display": "3,454,156",
+      "unit": "messages/s",
+      "evidence_status": "measured-live",
+      "source_path": "bench/results.json",
+      "source_locator": "/results/0/messages_per_second_median",
+      "method_note": "Median of five measured fresh child processes after one discarded warmup; compressed, streaming, single-thread MBO.",
+      "limitations": "Warm page cache and one measured host; not a cross-platform guarantee."
+    },
+    {
+      "id": "benchmark.mbo_streaming_decoded_mib_per_second",
+      "label": "Decoded MBO throughput",
+      "value": 184.4718886801506,
+      "display": "184.47",
+      "unit": "MiB/s",
+      "evidence_status": "measured-live",
+      "source_path": "bench/results.json",
+      "source_locator": "/results/0/decoded_mib_per_second_median",
+      "method_note": "Decoded throughput for the same compressed, streaming, single-thread MBO benchmark row.",
+      "limitations": "Warm page cache and one measured host; not a cross-platform guarantee."
+    },
+    {
+      "id": "sweep.event_count",
+      "label": "Heuristic sweep events",
+      "value": 11,
+      "display": "11",
+      "unit": "events",
+      "evidence_status": "measured-live",
+      "source_path": "evidence/public/sweep-summary.json",
+      "source_locator": "/event_count",
+      "method_note": "A publisher-qualified trade at least four ticks beyond the prior 50-trade high or low opened one candidate in that direction. A later trade had to cross back through the swept level within five seconds.",
+      "limitations": "This is a transparent historical-data heuristic, not a trading signal or execution recommendation. Visible resting-size attribution does not estimate hidden liquidity. The result is bounded to the named instrument session and committed parameters."
+    },
+    {
+      "id": "benchmark.measured_configuration_count",
+      "label": "Measured benchmark configurations",
+      "value": 31,
+      "display": "31",
+      "unit": "configurations",
+      "evidence_status": "derived-live",
+      "source_path": "bench/results.json",
+      "source_locator": "/results",
+      "method_note": "Count of measured configuration rows in the promoted benchmark matrix.",
+      "limitations": "One additional high-memory configuration is explicitly unsupported.",
+      "calculation": {
+        "kind": "array_length"
+      }
+    },
+    {
+      "id": "parity.mbo_records",
+      "label": "Rust and Node parity records",
+      "value": 33438049,
+      "display": "33,438,049",
+      "unit": "records",
+      "evidence_status": "measured-live",
+      "source_path": "evidence/public/parity-summary.json",
+      "source_locator": "/mbo_records",
+      "method_note": "The host Node native binding and Rust CLI decoded the same live MBO input. Record counts matched, and every emitted sweep field matched across both language surfaces.",
+      "limitations": "This proves parity for the measured host, session, schema, and detector configuration. It is not hosted cross-platform package-release proof."
+    }
+  ],
+  "validation": {
+    "mbo_records_scanned": 33438049,
+    "mbp10_records_scanned": 24171039,
+    "mbo_records_withheld_before_baseline": 300066,
+    "mbp10_updates_before_valid_baseline": 209423,
+    "aligned_updates": 23961616,
+    "unmatched_mbo_observations": 6622658,
+    "unmatched_mbp10_updates": 0,
+    "exact_matches": 23961616,
+    "end_to_end_exact_match_pct": 100,
+    "methodology": "Records were merge-grouped by exact event timestamp, publisher, instrument, and sequence. Identical action, price, and size records were paired within each group. Trades compared the reconstructed pre-event book; state-changing events compared the final event book. State remained withheld until a complete clear/snapshot baseline, and every eligible MBP-10 miss remained in the denominator.",
+    "discrepancy_classes": [
+      {
+        "classification": "exact",
+        "updates": 23961616
+      }
+    ]
+  },
+  "sweep": {
+    "parameters": {
+      "lookback_trades": 50,
+      "threshold_ticks": 4,
+      "reversion_window_ms": 5000,
+      "tick_size_points": 0.25
+    },
+    "event_count": 11,
+    "above_high_count": 7,
+    "below_low_count": 4,
+    "mbo_records_scanned": 33438049,
+    "methodology": "A publisher-qualified trade at least four ticks beyond the prior 50-trade high or low opened one candidate in that direction. A later trade had to cross back through the swept level within five seconds.",
+    "limitations": [
+      "This is a transparent historical-data heuristic, not a trading signal or execution recommendation.",
+      "Visible resting-size attribution does not estimate hidden liquidity.",
+      "The result is bounded to the named instrument session and committed parameters."
+    ]
+  },
+  "parity": {
+    "mbo_records": 33438049,
+    "event_count": 11,
+    "record_count_match": true,
+    "event_field_match": true,
+    "methodology": "The host Node native binding and Rust CLI decoded the same live MBO input. Record counts matched, and every emitted sweep field matched across both language surfaces.",
+    "limitations": [
+      "This proves parity for the measured host, session, schema, and detector configuration.",
+      "It is not hosted cross-platform package-release proof."
+    ]
+  },
+  "benchmark": {
+    "generated_at": "2026-07-31T02:07:25.601533075Z",
+    "methodology": "Each configuration runs in a fresh child process. One warmup is discarded and at least five measured runs are aggregated with median, nearest-rank p95, and population standard deviation. Timings include file reads, decompression, DBN parsing, record traversal, thread startup, and joins. Parallel rows decode independent identical streams and report aggregate throughput.",
+    "capabilities": [
+      {
+        "feature": "warm_page_cache",
+        "status": "measured",
+        "detail": "Every configuration is warmed explicitly before recorded child runs."
+      },
+      {
+        "feature": "cold_page_cache",
+        "status": "unsupported",
+        "detail": "The managed WSL run has no safe, isolated OS page-cache eviction primitive; no cold numbers are fabricated."
+      },
+      {
+        "feature": "peak_resident_set_size",
+        "status": "measured",
+        "detail": "Each child reads its own Linux /proc/self/status VmHWM value."
+      },
+      {
+        "feature": "allocation_count",
+        "status": "not_instrumentable",
+        "detail": "The forbid-unsafe workspace does not install a global allocator shim; results use null rather than zero."
+      },
+      {
+        "feature": "parallel_decode",
+        "status": "measured",
+        "detail": "Parallel rows run independent streams, because one DBN/Zstd stream is sequential and is not falsely presented as splittable."
+      }
+    ],
+    "results": [
+      {
+        "schema": "mbo",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 33438049,
+        "wire_bytes_per_run": 542275669,
+        "decoded_bytes_per_run": 1872531104,
+        "elapsed_seconds_median": 9.68052549,
+        "elapsed_seconds_p95": 9.928288913,
+        "elapsed_seconds_stddev": 0.14024345406685995,
+        "messages_per_second_median": 3454156.3920823885,
+        "messages_per_second_p95": 3515011.839329456,
+        "messages_per_second_stddev": 49607.34743282867,
+        "wire_mib_per_second_median": 53.42213896048703,
+        "decoded_mib_per_second_median": 184.4718886801506,
+        "nanoseconds_per_message_median": 289.5062893771105,
+        "peak_rss_mib_median": 5.625,
+        "peak_rss_mib_max": 5.625,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 133752196,
+        "wire_bytes_per_run": 2169102676,
+        "decoded_bytes_per_run": 7490124416,
+        "elapsed_seconds_median": 12.072305092,
+        "elapsed_seconds_p95": 12.582793726,
+        "elapsed_seconds_stddev": 0.228011537437275,
+        "messages_per_second_median": 11079259.095981104,
+        "messages_per_second_p95": 11225820.133922778,
+        "messages_per_second_stddev": 202372.42149289642,
+        "wire_mib_per_second_median": 171.35232219405108,
+        "decoded_mib_per_second_median": 591.6963850557532,
+        "nanoseconds_per_message_median": 90.25874305645046,
+        "peak_rss_mib_median": 12.625,
+        "peak_rss_mib_max": 12.75,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 33438049,
+        "wire_bytes_per_run": 542275669,
+        "decoded_bytes_per_run": 1872531104,
+        "elapsed_seconds_median": 3.861473887,
+        "elapsed_seconds_p95": 3.934720373,
+        "elapsed_seconds_stddev": 0.10045874053473804,
+        "messages_per_second_median": 8659400.523870487,
+        "messages_per_second_p95": 9138992.332672713,
+        "messages_per_second_stddev": 233438.37261284408,
+        "wire_mib_per_second_median": 133.92668008926947,
+        "decoded_mib_per_second_median": 462.46196991481577,
+        "nanoseconds_per_message_median": 115.48143514593211,
+        "peak_rss_mib_median": 522.5,
+        "peak_rss_mib_max": 522.625,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 133752196,
+        "wire_bytes_per_run": 2169102676,
+        "decoded_bytes_per_run": 7490124416,
+        "elapsed_seconds_median": 6.150689727,
+        "elapsed_seconds_p95": 6.381767053,
+        "elapsed_seconds_stddev": 0.1275572575587378,
+        "messages_per_second_median": 21745885.73584863,
+        "messages_per_second_p95": 22265185.676863935,
+        "messages_per_second_stddev": 443873.62048336957,
+        "wire_mib_per_second_median": 336.3228521621812,
+        "decoded_mib_per_second_median": 1161.3558152462083,
+        "nanoseconds_per_message_median": 45.98571022340448,
+        "peak_rss_mib_median": 2081,
+        "peak_rss_mib_max": 2081,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 33438049,
+        "wire_bytes_per_run": 1872531104,
+        "decoded_bytes_per_run": 1872531104,
+        "elapsed_seconds_median": 9.695424331,
+        "elapsed_seconds_p95": 10.913837409,
+        "elapsed_seconds_stddev": 0.5979331363465825,
+        "messages_per_second_median": 3448848.43184075,
+        "messages_per_second_p95": 3472830.234852092,
+        "messages_per_second_stddev": 190364.0099931405,
+        "wire_mib_per_second_median": 184.18841296577395,
+        "decoded_mib_per_second_median": 184.18841296577395,
+        "nanoseconds_per_message_median": 289.95185487646125,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 133752196,
+        "wire_bytes_per_run": 7490124416,
+        "decoded_bytes_per_run": 7490124416,
+        "elapsed_seconds_median": 17.781251516,
+        "elapsed_seconds_p95": 18.192395806,
+        "elapsed_seconds_stddev": 0.425022802522106,
+        "messages_per_second_median": 7522091.225111266,
+        "messages_per_second_p95": 7892917.774246462,
+        "messages_per_second_stddev": 184866.59244470685,
+        "wire_mib_per_second_median": 401.7230888275211,
+        "decoded_mib_per_second_median": 401.7230888275211,
+        "nanoseconds_per_message_median": 132.94175383856876,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 33438049,
+        "wire_bytes_per_run": 1872531104,
+        "decoded_bytes_per_run": 1872531104,
+        "elapsed_seconds_median": 8.229203199,
+        "elapsed_seconds_p95": 9.077812433,
+        "elapsed_seconds_stddev": 0.354823239722375,
+        "messages_per_second_median": 4063339.8144869404,
+        "messages_per_second_p95": 4127924.992711973,
+        "messages_per_second_stddev": 160209.5720553987,
+        "wire_mib_per_second_median": 217.00579963484756,
+        "decoded_mib_per_second_median": 217.00579963484756,
+        "nanoseconds_per_message_median": 246.10297087010073,
+        "peak_rss_mib_median": 1788.625,
+        "peak_rss_mib_max": 1788.75,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbo",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 133752196,
+        "wire_bytes_per_run": 7490124416,
+        "decoded_bytes_per_run": 7490124416,
+        "elapsed_seconds_median": 15.447859443,
+        "elapsed_seconds_p95": 16.270887163,
+        "elapsed_seconds_stddev": 0.47752936163451526,
+        "messages_per_second_median": 8658299.649444835,
+        "messages_per_second_p95": 8986889.867581282,
+        "messages_per_second_stddev": 263404.97398126026,
+        "wire_mib_per_second_median": 462.40317686625406,
+        "decoded_mib_per_second_median": 462.40317686625406,
+        "nanoseconds_per_message_median": 115.49611823195785,
+        "peak_rss_mib_median": 7146,
+        "peak_rss_mib_max": 7146.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 24171039,
+        "wire_bytes_per_run": 623005045,
+        "decoded_bytes_per_run": 8894942712,
+        "elapsed_seconds_median": 12.241226459,
+        "elapsed_seconds_p95": 13.139824121,
+        "elapsed_seconds_stddev": 0.38862847922486204,
+        "messages_per_second_median": 1974560.2355251715,
+        "messages_per_second_p95": 2001871.038529367,
+        "messages_per_second_stddev": 58944.31877824615,
+        "wire_mib_per_second_median": 48.536305769524695,
+        "decoded_mib_per_second_median": 692.9761849232492,
+        "nanoseconds_per_message_median": 506.4418810875279,
+        "peak_rss_mib_median": 5.625,
+        "peak_rss_mib_max": 5.625,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 96684156,
+        "wire_bytes_per_run": 2492020180,
+        "decoded_bytes_per_run": 35579770848,
+        "elapsed_seconds_median": 14.026688898,
+        "elapsed_seconds_p95": 14.530295278,
+        "elapsed_seconds_stddev": 0.22476976404808488,
+        "messages_per_second_median": 6892870.919364708,
+        "messages_per_second_p95": 6970688.970751667,
+        "messages_per_second_stddev": 107345.00644250243,
+        "wire_mib_per_second_median": 169.4324055316394,
+        "decoded_mib_per_second_median": 2419.067955958983,
+        "nanoseconds_per_message_median": 145.07743024617187,
+        "peak_rss_mib_median": 12.625,
+        "peak_rss_mib_max": 12.75,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 24171039,
+        "wire_bytes_per_run": 623005045,
+        "decoded_bytes_per_run": 8894942712,
+        "elapsed_seconds_median": 5.343818099,
+        "elapsed_seconds_p95": 5.442352209,
+        "elapsed_seconds_stddev": 0.05741174313579123,
+        "messages_per_second_median": 4523177.72652538,
+        "messages_per_second_p95": 4591463.97839366,
+        "messages_per_second_stddev": 48437.22194014063,
+        "wire_mib_per_second_median": 111.18340845456612,
+        "decoded_mib_per_second_median": 1587.4190051354433,
+        "nanoseconds_per_message_median": 221.08350820169542,
+        "peak_rss_mib_median": 599.625,
+        "peak_rss_mib_max": 599.75,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 96684156,
+        "wire_bytes_per_run": 2492020180,
+        "decoded_bytes_per_run": 35579770848,
+        "elapsed_seconds_median": 7.781287801,
+        "elapsed_seconds_p95": 8.45192104,
+        "elapsed_seconds_stddev": 0.2940984889506798,
+        "messages_per_second_median": 12425212.699056676,
+        "messages_per_second_p95": 12705840.129275003,
+        "messages_per_second_stddev": 438478.515461645,
+        "wire_mib_per_second_median": 305.42189190414706,
+        "decoded_mib_per_second_median": 4360.65526801319,
+        "nanoseconds_per_message_median": 80.48151965043786,
+        "peak_rss_mib_median": 2389,
+        "peak_rss_mib_max": 2389,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 24171039,
+        "wire_bytes_per_run": 8894942712,
+        "decoded_bytes_per_run": 8894942712,
+        "elapsed_seconds_median": 28.230545469,
+        "elapsed_seconds_p95": 28.827554416,
+        "elapsed_seconds_stddev": 0.34419373896819927,
+        "messages_per_second_median": 856201.6283582707,
+        "messages_per_second_p95": 867530.6288746771,
+        "messages_per_second_stddev": 10352.051041366814,
+        "wire_mib_per_second_median": 300.4858131294139,
+        "decoded_mib_per_second_median": 300.4858131294139,
+        "nanoseconds_per_message_median": 1167.9491919648137,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 96684156,
+        "wire_bytes_per_run": 35579770848,
+        "decoded_bytes_per_run": 35579770848,
+        "elapsed_seconds_median": 62.450357412,
+        "elapsed_seconds_p95": 64.084411621,
+        "elapsed_seconds_stddev": 1.1118954350679264,
+        "messages_per_second_median": 1548176.1835589092,
+        "messages_per_second_p95": 1585436.6746023747,
+        "messages_per_second_stddev": 27527.546104685014,
+        "wire_mib_per_second_median": 543.3357797698911,
+        "decoded_mib_per_second_median": 543.3357797698911,
+        "nanoseconds_per_message_median": 645.9213173666221,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "mbp-10",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 24171039,
+        "wire_bytes_per_run": 8894942712,
+        "decoded_bytes_per_run": 8894942712,
+        "elapsed_seconds_median": 62.882019416,
+        "elapsed_seconds_p95": 64.659487853,
+        "elapsed_seconds_stddev": 1.735355521874249,
+        "messages_per_second_median": 384387.13044654235,
+        "messages_per_second_p95": 403412.01248612464,
+        "messages_per_second_stddev": 10805.494201187796,
+        "wire_mib_per_second_median": 134.90149472173172,
+        "decoded_mib_per_second_median": 134.90149472173172,
+        "nanoseconds_per_message_median": 2601.5439144341294,
+        "peak_rss_mib_median": 8485.375,
+        "peak_rss_mib_max": 8485.5,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1380,
+        "wire_bytes_per_run": 27010,
+        "decoded_bytes_per_run": 77640,
+        "elapsed_seconds_median": 0.002071372,
+        "elapsed_seconds_p95": 0.002389907,
+        "elapsed_seconds_stddev": 0.00015305032770170738,
+        "messages_per_second_median": 666225.0913887027,
+        "messages_per_second_p95": 707400.6409664939,
+        "messages_per_second_stddev": 44637.459584355005,
+        "wire_mib_per_second_median": 12.435594999899974,
+        "decoded_mib_per_second_median": 35.746005027479974,
+        "nanoseconds_per_message_median": 1500.9942028985508,
+        "peak_rss_mib_median": 3.25,
+        "peak_rss_mib_max": 3.375,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5520,
+        "wire_bytes_per_run": 108040,
+        "decoded_bytes_per_run": 310560,
+        "elapsed_seconds_median": 0.002378434,
+        "elapsed_seconds_p95": 0.002551113,
+        "elapsed_seconds_stddev": 0.00007604008866749164,
+        "messages_per_second_median": 2320854.8145544506,
+        "messages_per_second_p95": 2360295.721108826,
+        "messages_per_second_stddev": 70131.18492914262,
+        "wire_mib_per_second_median": 43.32050969021266,
+        "decoded_mib_per_second_median": 124.52441215653872,
+        "nanoseconds_per_message_median": 430.8757246376812,
+        "peak_rss_mib_median": 3.75,
+        "peak_rss_mib_max": 3.875,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1380,
+        "wire_bytes_per_run": 27010,
+        "decoded_bytes_per_run": 77640,
+        "elapsed_seconds_median": 0.001716489,
+        "elapsed_seconds_p95": 0.001778957,
+        "elapsed_seconds_stddev": 0.00004878004865270227,
+        "messages_per_second_median": 803966.701796516,
+        "messages_per_second_p95": 836169.5436756195,
+        "messages_per_second_stddev": 22983.917256824803,
+        "wire_mib_per_second_median": 15.00664629143141,
+        "decoded_mib_per_second_median": 43.13646864371473,
+        "nanoseconds_per_message_median": 1243.8326086956522,
+        "peak_rss_mib_median": 3.375,
+        "peak_rss_mib_max": 3.5,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5520,
+        "wire_bytes_per_run": 108040,
+        "decoded_bytes_per_run": 310560,
+        "elapsed_seconds_median": 0.002373606,
+        "elapsed_seconds_p95": 0.002567661,
+        "elapsed_seconds_stddev": 0.00015632876246858733,
+        "messages_per_second_median": 2325575.5167454076,
+        "messages_per_second_p95": 2643774.390255584,
+        "messages_per_second_stddev": 162140.700330015,
+        "wire_mib_per_second_median": 43.40862516547871,
+        "decoded_mib_per_second_median": 124.77769929092065,
+        "nanoseconds_per_message_median": 430.00108695652176,
+        "peak_rss_mib_median": 3.625,
+        "peak_rss_mib_max": 3.75,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1380,
+        "wire_bytes_per_run": 77640,
+        "decoded_bytes_per_run": 77640,
+        "elapsed_seconds_median": 0.002135543,
+        "elapsed_seconds_p95": 0.002240132,
+        "elapsed_seconds_stddev": 0.00005177385385539696,
+        "messages_per_second_median": 646205.6722810076,
+        "messages_per_second_p95": 656448.2723518258,
+        "messages_per_second_stddev": 15150.602541407103,
+        "wire_mib_per_second_median": 34.671872177606,
+        "decoded_mib_per_second_median": 34.671872177606,
+        "nanoseconds_per_message_median": 1547.494927536232,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5520,
+        "wire_bytes_per_run": 310560,
+        "decoded_bytes_per_run": 310560,
+        "elapsed_seconds_median": 0.002723289,
+        "elapsed_seconds_p95": 0.002798593,
+        "elapsed_seconds_stddev": 0.00006612545001555743,
+        "messages_per_second_median": 2026960.7816137034,
+        "messages_per_second_p95": 2124750.5727588497,
+        "messages_per_second_stddev": 50326.371464094096,
+        "wire_mib_per_second_median": 108.75566115205731,
+        "decoded_mib_per_second_median": 108.75566115205731,
+        "nanoseconds_per_message_median": 493.3494565217391,
+        "peak_rss_mib_median": 3.25,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1380,
+        "wire_bytes_per_run": 77640,
+        "decoded_bytes_per_run": 77640,
+        "elapsed_seconds_median": 0.002012821,
+        "elapsed_seconds_p95": 0.002100427,
+        "elapsed_seconds_stddev": 0.00013367210599582848,
+        "messages_per_second_median": 685604.9295988068,
+        "messages_per_second_p95": 806060.6414607221,
+        "messages_per_second_stddev": 52277.406180669015,
+        "wire_mib_per_second_median": 36.78582145445683,
+        "decoded_mib_per_second_median": 36.78582145445683,
+        "nanoseconds_per_message_median": 1458.5659420289858,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.25,
+        "allocation_count": null
+      },
+      {
+        "schema": "ohlcv-1m",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5520,
+        "wire_bytes_per_run": 310560,
+        "decoded_bytes_per_run": 310560,
+        "elapsed_seconds_median": 0.002627849,
+        "elapsed_seconds_p95": 0.002762664,
+        "elapsed_seconds_stddev": 0.0001118924421100907,
+        "messages_per_second_median": 2100577.3162765442,
+        "messages_per_second_p95": 2279091.2371419203,
+        "messages_per_second_stddev": 92754.40628396995,
+        "wire_mib_per_second_median": 112.70552292126565,
+        "decoded_mib_per_second_median": 112.70552292126565,
+        "nanoseconds_per_message_median": 476.05960144927536,
+        "peak_rss_mib_median": 3.625,
+        "peak_rss_mib_max": 3.625,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1378526,
+        "wire_bytes_per_run": 21376339,
+        "decoded_bytes_per_run": 66169608,
+        "elapsed_seconds_median": 0.377783636,
+        "elapsed_seconds_p95": 0.392696266,
+        "elapsed_seconds_stddev": 0.01075367766237097,
+        "messages_per_second_median": 3648982.8267733655,
+        "messages_per_second_p95": 3834451.8368122904,
+        "messages_per_second_stddev": 105051.46499743649,
+        "wire_mib_per_second_median": 53.96227771785558,
+        "decoded_mib_per_second_median": 167.0380865206918,
+        "nanoseconds_per_message_median": 274.04897404909303,
+        "peak_rss_mib_median": 5.5,
+        "peak_rss_mib_max": 5.5,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "zstd",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5514104,
+        "wire_bytes_per_run": 85505356,
+        "decoded_bytes_per_run": 264678432,
+        "elapsed_seconds_median": 0.448600001,
+        "elapsed_seconds_p95": 0.492292427,
+        "elapsed_seconds_stddev": 0.023888680168336913,
+        "messages_per_second_median": 12291805.590076225,
+        "messages_per_second_p95": 13211038.353726557,
+        "messages_per_second_stddev": 637785.4070282859,
+        "wire_mib_per_second_median": 181.77499275657166,
+        "decoded_mib_per_second_median": 562.6772673704878,
+        "nanoseconds_per_message_median": 81.3550127092271,
+        "peak_rss_mib_median": 12.625,
+        "peak_rss_mib_max": 12.625,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1378526,
+        "wire_bytes_per_run": 21376339,
+        "decoded_bytes_per_run": 66169608,
+        "elapsed_seconds_median": 0.142438349,
+        "elapsed_seconds_p95": 0.153224314,
+        "elapsed_seconds_stddev": 0.004416988520009289,
+        "messages_per_second_median": 9678053.76626487,
+        "messages_per_second_p95": 9736047.075728357,
+        "messages_per_second_stddev": 279621.1796739454,
+        "wire_mib_per_second_median": 143.12202876693877,
+        "decoded_mib_per_second_median": 443.0285531901913,
+        "nanoseconds_per_message_median": 103.32655967315814,
+        "peak_rss_mib_median": 25.875,
+        "peak_rss_mib_max": 25.875,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "zstd",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5514104,
+        "wire_bytes_per_run": 85505356,
+        "decoded_bytes_per_run": 264678432,
+        "elapsed_seconds_median": 0.215719562,
+        "elapsed_seconds_p95": 0.256039353,
+        "elapsed_seconds_stddev": 0.018837045825002487,
+        "messages_per_second_median": 25561446.300359167,
+        "messages_per_second_p95": 26937188.05398593,
+        "messages_per_second_stddev": 1982039.437114116,
+        "wire_mib_per_second_median": 378.0105113154877,
+        "decoded_mib_per_second_median": 1170.1165177828339,
+        "nanoseconds_per_message_median": 39.12141700628062,
+        "peak_rss_mib_median": 94,
+        "peak_rss_mib_max": 94.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1378526,
+        "wire_bytes_per_run": 66169608,
+        "decoded_bytes_per_run": 66169608,
+        "elapsed_seconds_median": 0.336628831,
+        "elapsed_seconds_p95": 0.337416844,
+        "elapsed_seconds_stddev": 0.0021373611586215898,
+        "messages_per_second_median": 4095091.9025708763,
+        "messages_per_second_p95": 4154889.502609399,
+        "messages_per_second_stddev": 26312.064131989697,
+        "wire_mib_per_second_median": 187.45945048381648,
+        "decoded_mib_per_second_median": 187.45945048381648,
+        "nanoseconds_per_message_median": 244.1947638274505,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "none",
+        "access": "streaming",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5514104,
+        "wire_bytes_per_run": 264678432,
+        "decoded_bytes_per_run": 264678432,
+        "elapsed_seconds_median": 0.581873321,
+        "elapsed_seconds_p95": 0.605001317,
+        "elapsed_seconds_stddev": 0.026420614648674328,
+        "messages_per_second_median": 9476468.16067032,
+        "messages_per_second_p95": 10491629.39405183,
+        "messages_per_second_stddev": 463062.9444993839,
+        "wire_mib_per_second_median": 433.80064628376067,
+        "decoded_mib_per_second_median": 433.80064628376067,
+        "nanoseconds_per_message_median": 105.52454596431261,
+        "peak_rss_mib_median": 3.125,
+        "peak_rss_mib_max": 3.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "single_thread",
+        "threads": 1,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 1378526,
+        "wire_bytes_per_run": 66169608,
+        "decoded_bytes_per_run": 66169608,
+        "elapsed_seconds_median": 0.267718754,
+        "elapsed_seconds_p95": 0.275201771,
+        "elapsed_seconds_stddev": 0.006689803253599924,
+        "messages_per_second_median": 5149157.387756257,
+        "messages_per_second_p95": 5363227.23600612,
+        "messages_per_second_stddev": 130043.89402406354,
+        "wire_mib_per_second_median": 235.7110016889946,
+        "decoded_mib_per_second_median": 235.7110016889946,
+        "nanoseconds_per_message_median": 194.20653219453243,
+        "peak_rss_mib_median": 66.125,
+        "peak_rss_mib_max": 66.125,
+        "allocation_count": null
+      },
+      {
+        "schema": "trades",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "threads": 4,
+        "measured_runs": 5,
+        "warmup_runs_discarded": 1,
+        "messages_per_run": 5514104,
+        "wire_bytes_per_run": 264678432,
+        "decoded_bytes_per_run": 264678432,
+        "elapsed_seconds_median": 0.472576016,
+        "elapsed_seconds_p95": 0.480525897,
+        "elapsed_seconds_stddev": 0.008994036490870135,
+        "messages_per_second_median": 11668184.193249453,
+        "messages_per_second_p95": 12128782.532494687,
+        "messages_per_second_stddev": 227522.52226555988,
+        "wire_mib_per_second_median": 534.1299900100688,
+        "decoded_mib_per_second_median": 534.1299900100688,
+        "nanoseconds_per_message_median": 85.70313798941768,
+        "peak_rss_mib_median": 255.5,
+        "peak_rss_mib_max": 255.5,
+        "allocation_count": null
+      }
+    ],
+    "unsupported_configurations": [
+      {
+        "schema": "mbp-10",
+        "compression": "none",
+        "access": "fully_buffered_input",
+        "concurrency": "parallel_independent_streams",
+        "reason": "planned input buffers total 35579770848 bytes, above the configured 17179869184-byte safety gate"
+      }
+    ],
+    "measured_configuration_count": 31,
+    "unsupported_configuration_count": 1,
+    "machine": {
+      "cpu_model": "AMD Ryzen 7 7700X 8-Core Processor",
+      "physical_cores": 8,
+      "logical_cores": 16,
+      "installed_memory_bytes": 34359738368,
+      "os_name": "Microsoft Windows 11 Home",
+      "os_architecture": "x86_64",
+      "verification_runtime": "Ubuntu on WSL 2",
+      "verification_target": "x86_64-unknown-linux-gnu",
+      "idle_status": "not verified"
+    }
+  },
+  "limitations": [
+    "The measured evidence covers one historical ES instrument session and one host.",
+    "Benchmark measurements used a warm page cache; cold-cache performance is unsupported.",
+    "Validation proves reconstructed top-of-book equality, not full-depth equality.",
+    "The sweep detector is a transparent heuristic, not a signal, P&L claim, or execution recommendation.",
+    "The report does not claim hidden-liquidity estimation, exchange connectivity, routing, or production trading.",
+    "Provider timeout and interrupted-download behavior has not been fault-injected against the paid API.",
+    "Hosted cross-platform native-package and public deployment proof is not yet part of this evidence."
+  ],
+  "synthetic": {
+    "book_replay": {
+      "evidence_status": "synthetic",
+      "label": "Synthetic teaching example",
+      "description": "An invented ten-step sequence demonstrates baseline withholding, event-boundary comparison, invalidation, and recovery. It is not sampled from purchased data.",
+      "price_unit": "illustrative points",
+      "events": [
+        {
+          "id": "book-01",
+          "at_ms": 0,
+          "action": "clear",
+          "side": null,
+          "price_points": null,
+          "size": null,
+          "comparison_view": "none",
+          "trust_state": "withheld",
+          "explanation": "A clear begins a new baseline. The book is not yet trustworthy.",
+          "book_after": {
+            "bids": [],
+            "asks": []
+          }
+        },
+        {
+          "id": "book-02",
+          "at_ms": 100,
+          "action": "snapshot_add",
+          "side": "bid",
+          "price_points": 100,
+          "size": 12,
+          "comparison_view": "none",
+          "trust_state": "withheld",
+          "explanation": "A bid arrives, but the snapshot event is incomplete.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                12
+              ]
+            ],
+            "asks": []
+          }
+        },
+        {
+          "id": "book-03",
+          "at_ms": 200,
+          "action": "snapshot_add_last",
+          "side": "ask",
+          "price_points": 100.25,
+          "size": 10,
+          "comparison_view": "final-event",
+          "trust_state": "valid",
+          "explanation": "The final snapshot record establishes a complete two-sided baseline.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                12
+              ]
+            ],
+            "asks": [
+              [
+                100.25,
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "id": "book-04",
+          "at_ms": 300,
+          "action": "add",
+          "side": "bid",
+          "price_points": 99.75,
+          "size": 6,
+          "comparison_view": "final-event",
+          "trust_state": "valid",
+          "explanation": "A lower bid is added without changing the top bid.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                12
+              ],
+              [
+                99.75,
+                6
+              ]
+            ],
+            "asks": [
+              [
+                100.25,
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "id": "book-05",
+          "at_ms": 400,
+          "action": "modify",
+          "side": "bid",
+          "price_points": 100,
+          "size": 9,
+          "comparison_view": "final-event",
+          "trust_state": "valid",
+          "explanation": "A state-changing event is compared after its complete event boundary.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                9
+              ],
+              [
+                99.75,
+                6
+              ]
+            ],
+            "asks": [
+              [
+                100.25,
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "id": "book-06",
+          "at_ms": 500,
+          "action": "trade",
+          "side": "ask",
+          "price_points": 100.25,
+          "size": 3,
+          "comparison_view": "pre-event",
+          "trust_state": "valid",
+          "explanation": "A trade is compared with the pre-event book before associated mutations.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                9
+              ],
+              [
+                99.75,
+                6
+              ]
+            ],
+            "asks": [
+              [
+                100.25,
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "id": "book-07",
+          "at_ms": 600,
+          "action": "cancel",
+          "side": "ask",
+          "price_points": 100.25,
+          "size": 3,
+          "comparison_view": "final-event",
+          "trust_state": "valid",
+          "explanation": "The paired mutation reduces displayed ask size after the trade comparison.",
+          "book_after": {
+            "bids": [
+              [
+                100,
+                9
+              ],
+              [
+                99.75,
+                6
+              ]
+            ],
+            "asks": [
+              [
+                100.25,
+                7
+              ]
+            ]
+          }
+        },
+        {
+          "id": "book-08",
+          "at_ms": 700,
+          "action": "invalidate",
+          "side": null,
+          "price_points": null,
+          "size": null,
+          "comparison_view": "none",
+          "trust_state": "invalid",
+          "explanation": "A malformed or incomplete boundary invalidates the reconstructed state.",
+          "book_after": {
+            "bids": [],
+            "asks": []
+          }
+        },
+        {
+          "id": "book-09",
+          "at_ms": 800,
+          "action": "snapshot_add",
+          "side": "bid",
+          "price_points": 100.5,
+          "size": 8,
+          "comparison_view": "none",
+          "trust_state": "withheld",
+          "explanation": "Recovery begins from a new complete snapshot, not from stale state.",
+          "book_after": {
+            "bids": [
+              [
+                100.5,
+                8
+              ]
+            ],
+            "asks": []
+          }
+        },
+        {
+          "id": "book-10",
+          "at_ms": 900,
+          "action": "snapshot_add_last",
+          "side": "ask",
+          "price_points": 100.75,
+          "size": 11,
+          "comparison_view": "final-event",
+          "trust_state": "valid",
+          "explanation": "The completed replacement snapshot restores trustworthy state.",
+          "book_after": {
+            "bids": [
+              [
+                100.5,
+                8
+              ]
+            ],
+            "asks": [
+              [
+                100.75,
+                11
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "sweep_scenarios": {
+      "evidence_status": "synthetic",
+      "label": "Synthetic heuristic lab",
+      "description": "Invented paths explain candidate creation, reversion, expiry, and direction. Controls may change these examples but never the measured result.",
+      "scenarios": [
+        {
+          "id": "above-high-reverted",
+          "label": "Above prior high, reverted",
+          "outcome": "emitted",
+          "direction": "above_high",
+          "points": [
+            {
+              "at_ms": 0,
+              "price_points": 100
+            },
+            {
+              "at_ms": 500,
+              "price_points": 101
+            },
+            {
+              "at_ms": 2100,
+              "price_points": 100
+            }
+          ]
+        },
+        {
+          "id": "below-low-reverted",
+          "label": "Below prior low, reverted",
+          "outcome": "emitted",
+          "direction": "below_low",
+          "points": [
+            {
+              "at_ms": 0,
+              "price_points": 100
+            },
+            {
+              "at_ms": 700,
+              "price_points": 99
+            },
+            {
+              "at_ms": 2600,
+              "price_points": 100
+            }
+          ]
+        },
+        {
+          "id": "above-high-expired",
+          "label": "Above prior high, expired",
+          "outcome": "expired",
+          "direction": "above_high",
+          "points": [
+            {
+              "at_ms": 0,
+              "price_points": 100
+            },
+            {
+              "at_ms": 600,
+              "price_points": 101
+            },
+            {
+              "at_ms": 5700,
+              "price_points": 100.25
+            }
+          ]
+        },
+        {
+          "id": "threshold-not-reached",
+          "label": "Threshold not reached",
+          "outcome": "no_candidate",
+          "direction": null,
+          "points": [
+            {
+              "at_ms": 0,
+              "price_points": 100
+            },
+            {
+              "at_ms": 800,
+              "price_points": 100.75
+            },
+            {
+              "at_ms": 1600,
+              "price_points": 100
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "generation": {
+    "algorithm": "sha256",
+    "deterministic": true,
+    "inputs": [
+      {
+        "path": "bench/machine.json",
+        "sha256": "e139a15f4b8669d4348f3666453bea3e2d9cdfe250fde4b34c92780ce3c881c5"
+      },
+      {
+        "path": "bench/results.json",
+        "sha256": "3b48fc3ca7d39ba7308fb366ce9ea61da6dee42a60799114f758adca21154a6e"
+      },
+      {
+        "path": "config/live-session.json",
+        "sha256": "c4d7acf016f54c643b110487f712966af4b06f438f24082fb7af0cad3a07c21b"
+      },
+      {
+        "path": "config/sweep.json",
+        "sha256": "9e61eb467eb36fec656323f746f73da80661e88c648da4b360d91fecf41b46ea"
+      },
+      {
+        "path": "evidence/public/acquisition-summary.json",
+        "sha256": "e9877be34d1ba04319d79c7034c8f06ed0b1a6d5d340fe96be65cd0df9013b2f"
+      },
+      {
+        "path": "evidence/public/book-validation-summary.json",
+        "sha256": "8639e75354b89c74b39d10dac1e3926b4a341f2f7a21d26fa411c7507395e4ec"
+      },
+      {
+        "path": "evidence/public/parity-summary.json",
+        "sha256": "5fe4eb22ff8db4353fadfc0d53302b9001beff5abb8f60f42bf7af9d1abf651a"
+      },
+      {
+        "path": "evidence/public/sweep-summary.json",
+        "sha256": "832b7afa20fb56b2e34ea8c31695b4f50ffa7c38e28729454dd636ad55bac82c"
+      },
+      {
+        "path": "scripts/generate-public-report-data.mjs",
+        "sha256": "b7ecef3b74583ade39d85affca13703ac14cb9f4ce7bdac7a947607c26f65ebc"
+      }
+    ]
+  }
+}

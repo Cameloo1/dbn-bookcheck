@@ -1,0 +1,24 @@
+[package]
+name = "dbn-es-node"
+description = "N-API bindings for dbn-es-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+dbn.workspace = true
+dbn-es-core = { path = "../dbn-es-core" }
+napi.workspace = true
+napi-derive.workspace = true
+
+[build-dependencies]
+napi-build.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,40 @@
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  PROPTEST_CASES: "256"
+
+jobs:
+  quality:
+    name: Rust 1.88 quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Compile every target
+        run: cargo check --workspace --all-targets --locked
+      - name: Test every target
+        run: cargo test --workspace --all-targets --locked
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Generate deterministic synthetic fixture
+        run: cargo run --locked -p dbn-es-bench --bin dbn-es-bench -- data sample --output-dir /tmp/dbn-es-sample
+      - name: Decode fixture
+        run: cargo run --locked -p dbn-es-bench --bin dbn-es-bench -- decode stats --manifest /tmp/dbn-es-sample/manifest.json --output /tmp/dbn-es-sample/decode-stats.json
+      - name: Validate reconstructed book
+        run: cargo run --locked -p dbn-es-bench --bin dbn-es-bench -- analyze validate --manifest /tmp/dbn-es-sample/manifest.json --output /tmp/dbn-es-sample/book-validation.md --json-output /tmp/dbn-es-sample/book-validation.json
+      - name: Detect fixture sweeps
+        run: cargo run --locked -p dbn-es-bench --bin dbn-es-bench -- analyze sweeps --manifest /tmp/dbn-es-sample/manifest.json --config config/sweep.json --output /tmp/dbn-es-sample/sweeps.jsonl --summary /tmp/dbn-es-sample/sweep-summary.json --report /tmp/dbn-es-sample/sweep-detection.md
+      - name: Benchmark compile smoke
+        run: cargo bench --workspace --no-run --locked

@@ -1,0 +1,40 @@
+[package]
+name = "dbn-es-bench"
+description = "CLI and benchmark harness for dbn-es-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "dbn-es-bench"
+path = "src/main.rs"
+
+[[bin]]
+name = "dbn-es-benchmark"
+path = "src/bin/benchmark.rs"
+
+[[bench]]
+name = "core"
+harness = false
+
+[dependencies]
+clap.workspace = true
+databento.workspace = true
+dbn-es-core = { path = "../dbn-es-core" }
+dbn.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[lints]
+workspace = true

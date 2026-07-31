@@ -1,0 +1,23 @@
+[package]
+name = "dbn-es-core"
+description = "DBN decoding, order-book reconstruction, and liquidity-sweep detection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+dbn.workspace = true
+fallible-streaming-iterator.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

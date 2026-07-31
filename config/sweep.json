@@ -1,0 +1,6 @@
+{
+  "lookback_trades": 50,
+  "threshold_ticks": 4,
+  "reversion_window_ms": 5000,
+  "tick_size": 250000000
+}

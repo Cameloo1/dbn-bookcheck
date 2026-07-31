@@ -1,0 +1,52 @@
+{
+  "name": "dbn-es-bench",
+  "version": "0.1.0",
+  "description": "Node.js bindings for streaming Databento DBN decoding and ES liquidity-sweep detection",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cameloo1/dbn-bookcheck.git",
+    "directory": "node"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build:native": "napi build --platform --release --cargo-cwd ../crates/dbn-es-node",
+    "typecheck": "tsc --noEmit",
+    "example": "tsc -p tsconfig.example.json && node dist/example.js",
+    "parity": "tsc -p tsconfig.example.json && node dist/parity.js",
+    "pack:check": "npm pack --dry-run --ignore-scripts"
+  },
+  "napi": {
+    "name": "dbn-es-bench",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "2.18.4",
+    "@types/node": "24.1.0",
+    "typescript": "5.9.3"
+  },
+  "optionalDependencies": {
+    "dbn-es-bench-darwin-arm64": "0.1.0",
+    "dbn-es-bench-darwin-x64": "0.1.0",
+    "dbn-es-bench-linux-x64-gnu": "0.1.0",
+    "dbn-es-bench-win32-x64-msvc": "0.1.0"
+  }
+}

@@ -1,0 +1,62 @@
+# Rust build and coverage output
+/target/
+*.profraw
+
+# Node and web dependencies/build output
+node_modules/
+package-lock.json
+dist/
+coverage/
+.next/
+.vinext/
+.wrangler/
+.vercel/
+.pnp
+.pnp.*
+.yarn/
+*.tsbuildinfo
+
+# Secrets and private key material
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+
+# Purchased market data and generated evidence
+/data/**
+!/data/.gitkeep
+/out/
+/bench/raw/
+/bench/results.json
+/bench/machine.json
+/config/live-session.json
+/evidence/public/*.json
+/node/*.node
+*.dbn
+*.dbn.zst
+
+# Local implementation planning
+/docs/INTERACTIVE_PORTFOLIO_REPORT_PLAN.md
+
+# Runtime state
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

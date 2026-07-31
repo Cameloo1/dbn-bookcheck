@@ -1,0 +1,26 @@
+# Dependencies
+/node_modules/
+
+# Static build and browser-test output
+/dist/
+/.next/
+/.vinext/
+/.wrangler/
+/.xdg/
+/coverage/
+/outputs/
+/playwright-report/
+/test-results/
+
+# Local caches and incremental compiler state
+/*.tsbuildinfo
+/.vite/
+
+# Local environment and logs
+.env*
+*.log
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
